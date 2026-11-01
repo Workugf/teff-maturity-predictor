@@ -8,6 +8,55 @@ import seaborn as sns
 
 st.set_page_config(page_title="Teff Maturity Predictor", layout="wide")
 
+# ── Background image (CC-BY-SA 3.0 Rasbak / Wikimedia Commons) ────────────────
+st.markdown("""
+<style>
+/* Full-page background */
+[data-testid="stAppViewContainer"] {
+    background-image: url("https://upload.wikimedia.org/wikipedia/commons/3/3e/Teff_pluim_Eragrostis_tef.jpg");
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}
+/* Dark overlay so text stays readable */
+[data-testid="stAppViewContainer"]::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 0;
+}
+/* Keep all content above the overlay */
+[data-testid="stAppViewContainer"] > * {
+    position: relative;
+    z-index: 1;
+}
+/* Translucent card behind the main block */
+[data-testid="stVerticalBlock"] {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 1rem;
+}
+/* Make header text white */
+h1, h2, h3, h4, p, label, div[data-testid="stMarkdownContainer"] {
+    color: #ffffff !important;
+}
+/* Lighten tab labels */
+[data-testid="stTabs"] button[role="tab"] {
+    color: #e0e0e0 !important;
+    font-weight: 600;
+}
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+    color: #ffffff !important;
+    border-bottom: 3px solid #4CAF50;
+}
+/* Sidebar stays clean if shown */
+[data-testid="stSidebar"] {
+    background: rgba(0,0,0,0.6);
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ---------- must be identical to the notebook ----------
 NUM_FEATURES = ['GfilP', 'Altitude', 'ph_kcl_60cm', 'bio12_1970_2000',
                 'Thermal_Moisture_Index', 'Growth_Season_Moisture_Index']
