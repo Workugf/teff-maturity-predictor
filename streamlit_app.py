@@ -86,9 +86,30 @@ st.write(
     "Enter values in real units."
 )
 
-page = st.tabs(["Single Prediction", "Batch Prediction (CSV)", "Model Insights"])
+@st.cache_data
+def load_eda_data():
+    """Load and clean the raw dataset for EDA charts."""
+    df = pd.read_excel('teff.xlsx')
+    ptype_map  = {1:'very loose',2:'loose',3:'semi-loose',4:'compact',5:'very compact',
+                  '1':'very loose','2':'loose','3':'semi-loose','4':'compact','5':'very compact'}
+    hdatec_map = {1:'Early',2:'Medium',3:'Late','1':'Early','2':'Medium','3':'Late'}
+    mdatec_map = {1:'Early',2:'Medium',3:'Late','1':'Early','2':'Medium','3':'Late'}
+    curated = ['Hdatec','GfilP','Ptype','Altitude','ph_kcl_60cm',
+               'bio12_1970_2000','bio5_1970_2000','bio16_1970_2000','Mdatec']
+    existing = [c for c in curated if c in df.columns]
+    df = df[existing].copy()
+    for col in existing:
+        df = df[df[col] != 86]
+        df = df[df[col] != '86']
+    df['Ptype']  = df['Ptype'].astype(str).str.strip().map(ptype_map)
+    df['Hdatec'] = df['Hdatec'].map(hdatec_map).fillna(df['Hdatec'])
+    df['Mdatec'] = df['Mdatec'].map(mdatec_map).fillna(df['Mdatec'])
+    df = df.dropna(subset=['Ptype', 'Mdatec'])
+    return df
 
-tab1, tab2, tab3 = page
+tab1, tab2, tab3, tab4 = st.tabs(
+    ["Single Prediction", "Batch Prediction (CSV)", "Model Insights", "Data Explorer"]
+)
 
 # ── Single Prediction ──────────────────────────────────────────────────────────
 with tab1:
@@ -185,3 +206,128 @@ with tab3:
         ax2.set_title('Feature importance (Random Forest)')
         ax2.set_xlabel('Relative importance')
         right.pyplot(fig2)
+
+# ── Data Explorer ──────────────────────────────────────────────────────────────
+with tab4:
+    st.header("📊 Data Explorer")
+    st.write("Descriptive charts from the full teff germplasm dataset (2,082 accessions).")
+
+    try:
+        eda = load_eda_data()
+    except Exception as e:
+        st.error(f"Could not load teff.xlsx for EDA: {e}")
+        st.stop()
+
+    PALETTE = {'Early': '#2196F3', 'Medium': '#4CAF50', 'Late': '#FF9800'}
+    ORDER   = ['Early', 'Medium', 'Late']
+
+    # ── Row 1: class balance + heading date vs maturity ───────────────────────
+    r1c1, r1c2 = st.columns(2)
+
+    with r1c1:
+        st.subheader("Class distribution (Maturity)")
+        counts = eda['Mdatec'].value_counts().reindex(ORDER)
+        fig, ax = plt.subplots(figsize=(5, 3.5))
+        bars = ax.bar(counts.index, counts.values,
+                      color=[PALETTE[c] for c in counts.index], edgecolor='white', width=0.5)
+        for bar, val in zip(bars, counts.values):
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 10,
+                    str(val), ha='center', va='bottom', fontsize=10, fontweight='bold')
+        ax.set_xlabel('Maturity class'); ax.set_ylabel('Count')
+        ax.set_title('Number of accessions per maturity class')
+        sns.despine(ax=ax)
+        st.pyplot(fig)
+        st.caption("The dataset is imbalanced — Medium dominates, Early is rare.")
+
+    with r1c2:
+        st.subheader("Heading date vs Maturity")
+        hd_order = ['Early', 'Medium', 'Late']
+        ct = pd.crosstab(eda['Hdatec'], eda['Mdatec']).reindex(hd_order, fill_value=0)[ORDER]
+        fig, ax = plt.subplots(figsize=(5, 3.5))
+        ct.plot(kind='bar', ax=ax, color=[PALETTE[c] for c in ORDER],
+                edgecolor='white', width=0.6)
+        ax.set_xlabel('Heading date category'); ax.set_ylabel('Count')
+        ax.set_title('Heading date vs Maturity class')
+        ax.legend(title='Maturity', bbox_to_anchor=(1, 1))
+        ax.tick_params(axis='x', rotation=0)
+        sns.despine(ax=ax)
+        st.pyplot(fig)
+        st.caption("Heading date and maturity are strongly correlated — earlier heading → earlier maturity.")
+
+    st.divider()
+
+    # ── Row 2: grain filling period + altitude distributions ──────────────────
+    r2c1, r2c2 = st.columns(2)
+
+    with r2c1:
+        st.subheader("Grain filling period by Maturity")
+        fig, ax = plt.subplots(figsize=(5, 3.5))
+        for cls in ORDER:
+            vals = eda.loc[eda['Mdatec'] == cls, 'GfilP'].dropna()
+            ax.hist(vals, bins=20, alpha=0.6, label=cls, color=PALETTE[cls], edgecolor='white')
+        ax.set_xlabel('Grain filling period (days)'); ax.set_ylabel('Count')
+        ax.set_title('Distribution of grain filling period')
+        ax.legend(title='Maturity')
+        sns.despine(ax=ax)
+        st.pyplot(fig)
+        st.caption("Late-maturing accessions tend to have longer grain filling periods.")
+
+    with r2c2:
+        st.subheader("Altitude by Maturity")
+        fig, ax = plt.subplots(figsize=(5, 3.5))
+        data_by_class = [eda.loc[eda['Mdatec'] == cls, 'Altitude'].dropna() for cls in ORDER]
+        bp = ax.boxplot(data_by_class, labels=ORDER, patch_artist=True,
+                        medianprops=dict(color='black', linewidth=2))
+        for patch, cls in zip(bp['boxes'], ORDER):
+            patch.set_facecolor(PALETTE[cls])
+            patch.set_alpha(0.7)
+        ax.set_xlabel('Maturity class'); ax.set_ylabel('Altitude (m)')
+        ax.set_title('Altitude distribution by maturity class')
+        sns.despine(ax=ax)
+        st.pyplot(fig)
+        st.caption("Late-maturing types are typically found at higher altitudes with longer growing seasons.")
+
+    st.divider()
+
+    # ── Row 3: annual precipitation + panicle type heatmap ───────────────────
+    r3c1, r3c2 = st.columns(2)
+
+    with r3c1:
+        st.subheader("Annual precipitation by Maturity")
+        fig, ax = plt.subplots(figsize=(5, 3.5))
+        for cls in ORDER:
+            vals = eda.loc[eda['Mdatec'] == cls, 'bio12_1970_2000'].dropna()
+            sns.kdeplot(vals, ax=ax, label=cls, color=PALETTE[cls], fill=True, alpha=0.3)
+        ax.set_xlabel('Annual precipitation — bio12 (mm)'); ax.set_ylabel('Density')
+        ax.set_title('Precipitation distribution by maturity class')
+        ax.legend(title='Maturity')
+        sns.despine(ax=ax)
+        st.pyplot(fig)
+        st.caption("Early-maturing accessions are more common in drier zones.")
+
+    with r3c2:
+        st.subheader("Panicle type vs Maturity")
+        ptype_order = ['very loose', 'loose', 'semi-loose', 'compact', 'very compact']
+        ct2 = pd.crosstab(eda['Ptype'], eda['Mdatec'])
+        ct2 = ct2.reindex([p for p in ptype_order if p in ct2.index], fill_value=0)
+        ct2 = ct2[[c for c in ORDER if c in ct2.columns]]
+        # Normalise to % within each panicle type
+        ct2_pct = ct2.div(ct2.sum(axis=1), axis=0) * 100
+        fig, ax = plt.subplots(figsize=(5, 3.5))
+        ct2_pct.plot(kind='barh', ax=ax, color=[PALETTE[c] for c in ct2_pct.columns],
+                     edgecolor='white', width=0.6)
+        ax.set_xlabel('% of accessions'); ax.set_ylabel('Panicle type')
+        ax.set_title('Maturity class share by panicle type (%)')
+        ax.legend(title='Maturity', bbox_to_anchor=(1, 1))
+        sns.despine(ax=ax)
+        st.pyplot(fig)
+        st.caption("Compact panicle types are more associated with late maturity.")
+
+    st.divider()
+
+    # ── Summary stats table ───────────────────────────────────────────────────
+    st.subheader("Summary statistics by Maturity class")
+    num_cols = ['GfilP', 'Altitude', 'ph_kcl_60cm', 'bio12_1970_2000', 'bio5_1970_2000']
+    summary = eda.groupby('Mdatec')[num_cols].agg(['mean', 'std']).round(2)
+    summary.columns = [f"{col} ({stat})" for col, stat in summary.columns]
+    st.dataframe(summary.reindex(ORDER), use_container_width=True)
