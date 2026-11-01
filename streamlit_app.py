@@ -276,8 +276,12 @@ with tab4:
         st.subheader("Altitude by Maturity")
         fig, ax = plt.subplots(figsize=(5, 3.5))
         data_by_class = [eda.loc[eda['Mdatec'] == cls, 'Altitude'].dropna() for cls in ORDER]
-        bp = ax.boxplot(data_by_class, labels=ORDER, patch_artist=True,
-                        medianprops=dict(color='black', linewidth=2))
+        import matplotlib
+        _mpl_ver = tuple(int(x) for x in matplotlib.__version__.split('.')[:2])
+        _bp_label_kw = 'tick_labels' if _mpl_ver >= (3, 9) else 'labels'
+        bp = ax.boxplot(data_by_class, patch_artist=True,
+                        medianprops=dict(color='black', linewidth=2),
+                        **{_bp_label_kw: ORDER})
         for patch, cls in zip(bp['boxes'], ORDER):
             patch.set_facecolor(PALETTE[cls])
             patch.set_alpha(0.7)
